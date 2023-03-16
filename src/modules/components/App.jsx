@@ -1,24 +1,21 @@
-import { Component } from "react";
 import ImageGallery from "./ImageGallery/ImageGallery";
 import SearchBar from "./Searchbar/Searchbar";
-import styles from "..//components/App.module.css"
+import css from "..//components/App.module.css"
+import { useState } from 'react';
 
-class App extends Component {
-  state = {
-    searchParam: null,
+
+
+const App = () => {
+  const [searchParam, setSearchParam] = useState(null);
+  const handleSubmit = search => {
+    setSearchParam(search);
   };
-  handleSubmit = search => {
-    this.setState({ searchParam: search });
-  };
-  render() {
-    const { searchParam } = this.state;
-    return (
-      <div className={styles.App}>
-        <SearchBar onSubmit={this.handleSubmit} />
-        <ImageGallery searchParam={searchParam} />
-      </div>
-    );
-  }
-}
+  return (
+    <div className={css.App}>
+      <SearchBar onSubmit={handleSubmit} />
+      <ImageGallery searchParam={searchParam} />
+    </div>
+  );
+};
 
 export default App;

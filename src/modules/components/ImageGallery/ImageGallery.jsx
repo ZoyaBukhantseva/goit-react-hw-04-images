@@ -1,19 +1,15 @@
 import  {fetchImage} from '..//..//..//services/api';
-import { Component } from 'react';
 import  PropTypes  from 'prop-types';
 import ImageGalleryItem from './ImageGalleryItem/ImageGalleryItem';
 import Modal from '..//..//..//shared/components/Modal/Modal';
 import Button from '..//..//..//shared/components/Button/Button';
 import Loader from '..//..//..//shared/components/Loader/Loader';
-
-import styles from './image-gallery.module.css';
-
-
+import css from './image-gallery.module.css';
 import EmptyView from '..//EmptyView/EmptyView';
 import ErrorView from '..//ErrorView/ErrorView';
+import { useState, useEffect } from 'react';
 
-
-const status = {
+const STATUS = {
   IDLE: 'idle',
   PENDING: 'pending',
   RESOLVE: 'resolve',
@@ -21,131 +17,120 @@ const status = {
 };
 const controller = new AbortController();
 const signal = controller.signal;
-class ImageGallery extends Component {
-  state = {
-    imageList: null,
-    errorMessage: null,
-    curStatus: status.IDLE,
-    currentPage: 1,
-    showModal: false,
-    id: null,
-    totalHits: 0,
-  };
-  toggleModal = () => {
-    this.setState(prevState => {
-      return {
-        showModal: !prevState.showModal,
-      };
-    });
-  };
-  componentDidUpdate(
-    { searchParam: prevSearchParam },
-    { currentPage: prevCurrentPage }
-  ) {
-    const { searchParam } = this.props;
-    const { currentPage } = this.state;
 
-    if (prevSearchParam !== searchParam) {
-      this.getImages(searchParam, currentPage, true);
-    }
-    if (prevCurrentPage < currentPage) {
-      this.getImages(searchParam, currentPage);
-    }
-  }
-  componentWillUnmount() {
-    controller.abort();
-  }
-  getImages(search, page, statusShow = false) {
-    if (statusShow) {
-      this.setState({ curStatus: status.PENDING, currentPage: 1 });
-    }
-    fetchImage(search, page, signal)
-      .then(response => {
-        if (response.ok) {
-          return response.json();
-        }
-        return new Error('Image not found.Try again');
-      })
-      .then(response => {
-        this.setState(({ imageList }) => {
-          if (page > 1) {
-            return {
-              imageList: [...imageList, ...response.hits],
-              curStatus: status.RESOLVE,
-            };
+const ImageGallery = ({ searchParam }) => {
+  const [imageList, setImageList] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [curStatus, setCurStatus] = useState(STATUS.IDLE);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showModal, setShowModal] = useState(false);
+  const [id, setId] = useState(null);
+  const [totalHits, setTotalHits] = useState(0);
+
+  const toggleModal = () => {
+    setShowModal(prevState => !prevState);
+  };
+  const loadModal = id => {
+    setId(id);
+    toggleModal();
+  };
+  useEffect(() => {
+    if (searchParam) {
+      setCurrentPage(1);
+      if (!searchParam) {
+        return;
+      }
+      setCurStatus(STATUS.PENDING);
+      fetchImage(searchParam, 1, signal)
+        .then(response => {
+          if (response.ok) {
+            return response.json();
           }
-          return {
-            imageList: response.hits,
-            curStatus: status.RESOLVE,
-            totalHits: response.totalHits,
-          };
+          return new Error('Image not found. Try again');
+        })
+        .then(response => {
+          if (response.totalHits < 1) {
+            setCurStatus(STATUS.REJECT);
+            return new Error('Image not found. Try again with new request');
+          }
+          setTotalHits(response.totalHits);
+          setImageList(response.hits);
+          setCurStatus(STATUS.RESOLVE);
+        })
+        .catch(error => {
+          console.log(error);
+          setCurStatus(STATUS.REJECT);
+          setErrorMessage(error.message);
         });
-      })
-      .catch(error => {
-        this.setState({ curStatus: status.REJECT, errorMessage: error });
-      });
-  }
-  showModal = id => {
-    this.setState({ showModal: true, id });
-  };
-  handleLoadMore = () => {
-    this.setState(prevState => {
-      return { currentPage: prevState.currentPage + 1 };
-    });
-  };
-  reloadRequest = () => {
-    const { searchParam } = this.props;
-    const { currentPage } = this.state;
+    }
+  }, [searchParam]);
 
-    this.getImages(searchParam, currentPage, true);
+  useEffect(() => {
+    if (currentPage > 1) {
+      if (!searchParam) {
+        return;
+      }
+      fetchImage(searchParam, currentPage, signal)
+        .then(response => {
+          if (response.ok) {
+            return response.json();
+          }
+          return new Error('Image not found. Try again');
+        })
+        .then(response => {
+          if (response.totalHits < 1) {
+            setCurStatus(STATUS.REJECT);
+            return new Error('Image not found. Try again with new request');
+          }
+          setImageList(prevList => {
+            return [...prevList, ...response.hits];
+          });
+          setCurStatus(STATUS.RESOLVE);
+        })
+        .catch(error => {
+          console.log(error);
+          setCurStatus(STATUS.REJECT);
+          setErrorMessage(error.message);
+        });
+    }
+  }, [currentPage, searchParam]);
+
+  const handleLoadMore = () => {
+    setCurrentPage(prevPage => prevPage + 1);
   };
-  render() {
-    const {
-      curStatus,
-      errorMessage,
-      imageList,
-      showModal,
-      id,
-      currentPage,
-      totalHits,
-    } = this.state;
-    if (curStatus === status.IDLE) {
-      return <EmptyView />;
-    }
-    if (curStatus === status.PENDING) {
-      return <Loader />;
-    }
-    if (curStatus === status.RESOLVE) {
-      const classes = showModal
-        ? styles.container + ' ' + styles.no_scroll
-        : styles.container;
-      return (
-        <div className={classes}>
-          <ul className={styles.gallery}>
-            {imageList.map((el, index) => (
-              <ImageGalleryItem
-                key={el.id}
-                onModal={this.showModal}
-                id={index}
-                item={el}
-              />
-            ))}
-          </ul>
-          {totalHits > currentPage * 12 && (
-            <Button onLoadMore={this.handleLoadMore} />
-          )}
-          {showModal && (
-            <Modal item={imageList[id]} onClose={this.toggleModal} />
-          )}
-        </div>
-      );
-    }
-    if (curStatus === status.REJECT) {
-      return <ErrorView message={errorMessage} tryAgain={this.reloadRequest} />;
-    }
+  if (curStatus === STATUS.IDLE) {
+    return <EmptyView />;
   }
-}
+  if (curStatus === STATUS.PENDING) {
+    return <Loader />;
+  }
+  if (curStatus === STATUS.RESOLVE) {
+    const classes = showModal
+      ? css.container + ' ' + css.no_scroll
+      : css.container;
+    return (
+      <div className={classes}>
+        <ul className={css.gallery}>
+          {imageList.map((el, index) => (
+            <ImageGalleryItem
+              key={el.id}
+              onModal={loadModal}
+              id={index}
+              item={el}
+            />
+          ))}
+        </ul>
+        {totalHits > currentPage * 12 && <Button onLoadMore={handleLoadMore} />}
+        {showModal && <Modal item={imageList[id]} onClose={toggleModal} />}
+      </div>
+    );
+  }
+  if (curStatus === STATUS.REJECT) {
+    return <ErrorView message={errorMessage} />;
+  }
+};
+
 ImageGallery.propTypes = {
-  searchParam: PropTypes.string.isRequired,
+  searchParam: PropTypes.string,
 };
 export default ImageGallery;
